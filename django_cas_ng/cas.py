@@ -1,7 +1,13 @@
+
+from django.conf import settings
+from django.utils import six
+from django.contrib.auth import get_user_model
 from django.utils.six.moves import urllib_parse
 from django.utils.six.moves.urllib_request import urlopen, Request
 from uuid import uuid4
 import datetime
+import inspect
+import importlib
 
 """
 if settings.CAS_VERSION not in _PROTOCOLS:
@@ -27,7 +33,20 @@ class CASClient(object):
             return CASClientV3(*args, **kwargs)
         elif version == 'CAS_2_SAML_1_0':
             return CASClientWithSAMLV1(*args, **kwargs)
-        raise ValueError('Unsupported CAS_VERSION %r' % version)
+        else:
+            cas_client_impl = version
+
+            try:
+                if isinstance(version, six.string_types):
+                    module_name, class_name = cas_client_impl.rsplit(".", 1)
+                    cas_client_impl = getattr(importlib.import_module(module_name), class_name)
+                if inspect.isclass(cas_client_impl):
+                    return cas_client_impl(*args, **kwargs)
+            except:
+                # do nothing
+                pass
+
+            raise ValueError('Unsupported CAS_VERSION %r' % version)
 
 
 class CASClientBase(object):
@@ -51,6 +70,31 @@ class CASClientBase(object):
         on failure.
         """
         raise NotImplementedError()
+
+    def get_or_create_user(self, username, attributes):
+        """get or create a user
+
+        Return (created, user).
+        The returned user can be `None`.
+        """
+        if not username:
+            return None, False
+
+        User = get_user_model()
+
+        try:
+            user = User.objects.get(**{User.USERNAME_FIELD: username})
+            created = False
+        except User.DoesNotExist:
+            # check if we want to create new users, if we don't fail auth
+            create = getattr(settings, 'CAS_CREATE_USER', True)
+            if not create:
+                return None, False
+            # user will have an "unusable" password
+            user = User.objects.create_user(username, '')
+            user.save()
+            created = True
+        return created, user
 
     def get_login_url(self):
         """Generates CAS login URL"""

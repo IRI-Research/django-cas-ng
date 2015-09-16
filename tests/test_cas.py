@@ -1,6 +1,7 @@
 """Tests for the cas protocol-related code"""
 from __future__ import absolute_import
 from django_cas_ng import cas
+import pytest
 from pytest import fixture
 import sys
 
@@ -135,3 +136,58 @@ def test_can_saml_assertion_is_encoded():
         assert ticket.encode('utf-8') in saml
     else:
         assert ticket in saml
+
+class CasClientCustom(cas.CASClientBase):
+    def verify_ticket(self, ticket):
+        return 'test_custom@example.com', {'ticket': ticket,}, None
+
+
+
+#test CASClient custom class
+def test_casclient_custom_class():
+    version = CasClientCustom
+
+    cas_client = cas.CASClient(
+        service_url="https://testserver/login/?next=%2F",
+        version=version,
+        server_url="https://cas.domain.com",
+        extra_login_params={},
+        renew=False,
+        username_attribute="user",
+        proxy_callback=False
+    )
+
+    assert isinstance(cas_client, CasClientCustom)
+
+#test CASClient custom class with classname
+def test_casclient_custom_class_classname():
+    version = 'tests.test_cas.CasClientCustom'
+
+    cas_client = cas.CASClient(
+        service_url="https://testserver/login/?next=%2F",
+        version=version,
+        server_url="https://cas.domain.com",
+        extra_login_params={},
+        renew=False,
+        username_attribute="user",
+        proxy_callback=False
+    )
+
+    assert isinstance(cas_client, CasClientCustom)
+
+
+#test CASClient custom class fail
+def test_casclient_custom_class_fail():
+    version = 'foo.bar'
+
+    with pytest.raises(Exception) as excinfo:
+        cas_client = cas.CASClient(
+            service_url="https://testserver/login/?next=%2F",
+            version=version,
+            server_url="https://cas.domain.com",
+            extra_login_params={},
+            renew=False,
+            username_attribute="user",
+            proxy_callback=False
+        )
+    assert str(excinfo.value) == "Unsupported CAS_VERSION 'foo.bar'"
