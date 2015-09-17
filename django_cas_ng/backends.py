@@ -25,18 +25,10 @@ class CASBackend(ModelBackend):
             request.session['attributes'] = attributes
         if not username:
             return None
-        try:
-            user = User.objects.get(**{User.USERNAME_FIELD: username})
-            created = False
-        except User.DoesNotExist:
-            # check if we want to create new users, if we don't fail auth
-            create = getattr(settings, 'CAS_CREATE_USER', True)
-            if not create:
-                return None
-            # user will have an "unusable" password
-            user = User.objects.create_user(username, '')
-            user.save()
-            created = True
+        created, user = client.get_or_create_user(username, attributes)
+
+        if user is None:
+            return None
 
         if pgtiou and settings.CAS_PROXY_CALLBACK:
             request.session['pgtiou'] = pgtiou
